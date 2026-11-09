@@ -202,6 +202,9 @@ class EditorFormNodeTest {
         holder.setValue(json("\"demo:reference\""));
         assertFalse(root.hasErrors(), "An inactive inline draft must not block reference mode");
         assertEquals(json("{\"holder\":\"demo:reference\"}"), root.collect());
+        holder.toggleMode();
+        assertSame(inline, holder.inlineNode(entrySchema));
+        assertTrue(root.hasErrors(), "Switching back must restore the duplicate-key draft");
     }
 
     private static JsonObject schema(String text) {

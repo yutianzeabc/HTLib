@@ -117,7 +117,15 @@ public final class HolderWidget extends EditorWidget {
     @Override
     public void refreshFromNode() {
         if (inlineMode()) {
-            if (inlineNode == null && !supportsInline()) {
+            if (inlineNode != null) {
+                EditorFormNode current = node.inlineNode(entrySchema);
+                if (current != inlineNode) {
+                    if (inlineNode.hasWidget()) {
+                        inlineNode.widget(host).dispose();
+                    }
+                    inlineNode = current;
+                }
+            } else if (!supportsInline()) {
                 inlineNode = node.inlineRawNode();
             }
             if (inlineNode != null) {
@@ -180,10 +188,8 @@ public final class HolderWidget extends EditorWidget {
 
     /** 切换引用 / 展开：值形态随模式变化，控件树按新模式重建。 */
     private void toggleMode() {
+        node.toggleMode();
         if (inlineMode()) {
-            node.setValue(new JsonPrimitive(""));
-        } else {
-            node.setValue(new JsonObject());
             acquireEntrySchema();
         }
         dispose();

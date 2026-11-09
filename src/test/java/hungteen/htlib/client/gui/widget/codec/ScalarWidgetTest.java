@@ -3,6 +3,7 @@ package hungteen.htlib.client.gui.widget.codec;
 import com.google.gson.JsonParser;
 import hungteen.htlib.client.gui.screen.codec.CodecEditorScreen;
 import hungteen.htlib.client.gui.screen.codec.node.EditorFormNode;
+import hungteen.htlib.client.gui.screen.codec.node.HolderNode;
 import net.minecraft.client.StringSplitter;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
@@ -28,12 +29,7 @@ class ScalarWidgetTest {
         var root = EditorFormNode.create(schema, "", value);
         var edits = new AtomicInteger();
         root.onChanged(edits::incrementAndGet);
-        var screen = new CodecEditorScreen(List.of()) {
-            @Override
-            public Font font() {
-                return FIXED_FONT;
-            }
-        };
+        var screen = screen();
         var form = root.widget(screen);
         form.layout(0, screen.topOffset(), 320);
         var message = (EditBox) screen.children().get(0);
@@ -54,6 +50,42 @@ class ScalarWidgetTest {
         exhaustion.setValue("0.5");
         assertEquals(1, edits.get());
         assertEquals("0.5", root.collect().getAsJsonObject().get("exhaustion").getAsString());
+    }
+
+    @Test
+    void reloadingAHolderBindsItsScalarInputToTheNewInlineDraft() {
+        var holder = (HolderNode) EditorFormNode.create(JsonParser.parseString("""
+            {"type":"HOLDER"}
+            """).getAsJsonObject(), "", JsonParser.parseString("""
+            {"name":"old"}
+            """));
+        holder.inlineNode(JsonParser.parseString("""
+            {"type":"RECORD","fields":[{"name":"name","schema":{"type":"STRING"}}]}
+            """).getAsJsonObject());
+        var screen = screen();
+        var widget = holder.widget(screen);
+        widget.layout(0, screen.topOffset(), 320);
+        var previous = (EditBox) screen.children().get(0);
+        assertEquals("old", previous.getValue());
+
+        holder.load(JsonParser.parseString("\"test:new_reference\""));
+        holder.toggleMode();
+        widget.refreshFromNode();
+        widget.layout(0, screen.topOffset(), 320);
+        assertFalse(screen.children().contains(previous));
+        assertEquals(1, screen.children().size());
+        var current = (EditBox) screen.children().get(0);
+        current.setValue("new");
+        assertEquals("new", holder.collect().getAsJsonObject().get("name").getAsString());
+    }
+
+    private static CodecEditorScreen screen() {
+        return new CodecEditorScreen(List.of()) {
+            @Override
+            public Font font() {
+                return FIXED_FONT;
+            }
+        };
     }
 
     private static final Font FIXED_FONT = new Font(id -> null, false) {
