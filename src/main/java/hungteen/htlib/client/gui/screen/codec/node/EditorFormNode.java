@@ -29,6 +29,11 @@ public abstract class EditorFormNode {
     protected final JsonObject schema;
     protected final String label;
     protected JsonElement value;
+    /** 只读导入值。Java null 表示缺键，JsonNull 表示显式的 JSON null。 */
+    protected JsonElement original;
+    protected boolean imported;
+    protected boolean edited;
+    private Runnable changeListener;
     protected boolean invalid = false;
     protected String errorMessage = "";
     /** 是否必填（schema 声明；显示时字段名后带红色星号）。 */
@@ -39,7 +44,7 @@ public abstract class EditorFormNode {
     protected EditorFormNode(JsonObject schema, String label, JsonElement value) {
         this.schema = schema;
         this.label = label == null ? "" : label;
-        this.value = value == null || value.isJsonNull() ? defaultFor(schema) : value;
+        this.value = value == null ? defaultFor(schema) : value;
         this.required =
             this.schema != null && this.schema.has(SchemaKeys.REQUIRED) && this.schema.get(SchemaKeys.REQUIRED)
                 .getAsBoolean();
@@ -52,24 +57,96 @@ public abstract class EditorFormNode {
 
     /** 工厂：按 schema 类型创建对应节点子类（构造完成后调用 init 填充子结构）。 */
     public static EditorFormNode create(JsonObject schema, String label, JsonElement value) {
-        EditorFormNode node = switch (typeOf(schema)) {
+        return create(schema, label, value, value != null);
+    }
+
+    private static EditorFormNode create(JsonObject schema, String label, JsonElement value, boolean imported) {
+        if (schema == null) {
+            schema = new JsonObject();
+        }
+        EditorFormNode node = needsRaw(schema, value) ? new RawJsonNode(schema, label, value) : switch (typeOf(schema)) {
             case RECORD -> new RecordNode(schema, label, value);
             case LIST, SET -> new ListSetNode(schema, label, value);
             case MAP -> new MapNode(schema, label, value);
             case OPTIONAL -> new OptionalNode(schema, label, value);
-            case UNION, EITHER -> new UnionNode(schema, label, value);
+            case UNION -> new UnionNode(schema, label, value);
             case ENUM -> new EnumNode(schema, label, value);
             case BOOLEAN -> new BooleanNode(schema, label, value);
             case HOLDER, HOLDER_SET -> new HolderNode(schema, label, value);
             default -> new ScalarNode(schema, label, value);
         };
+        node.original = value;
+        node.imported = imported;
         node.init();
         return node;
     }
 
+    /** 只检查当前节点可编辑的 JSON 外形，子节点在各自创建时检查。 */
+    static boolean needsRaw(JsonObject schema, JsonElement value) {
+        SchemaType type = typeOf(schema);
+        if (type == SchemaType.UNKNOWN || type == SchemaType.EITHER) {
+            return true;
+        }
+        if (value == null) {
+            return false;
+        }
+        return switch (type) {
+            case OPTIONAL, UNION -> false; // 可选包装处理存在性，分派节点保留未知分支。
+            case RECORD -> !value.isJsonObject();
+            case MAP -> !value.isJsonObject() || !schema.has(SchemaKeys.KEY) || !schema.has(SchemaKeys.VALUE);
+            case LIST, SET -> !value.isJsonArray() || !schema.has(SchemaKeys.ELEMENT);
+            case BOOLEAN -> !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean();
+            case BYTE, SHORT, INT, LONG, FLOAT, DOUBLE ->
+                !isNumber(value) || !isNumber(parseInput(value.getAsString(), type));
+            case HOLDER -> !value.isJsonObject() && !isString(value);
+            case ENUM -> !isString(value) || !hasEnumValue(schema, value.getAsString());
+            default -> !isString(value);
+        };
+    }
+
+    private static boolean isString(JsonElement value) {
+        return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString();
+    }
+
+    protected static boolean isNumber(JsonElement value) {
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber();
+    }
+
+    private static boolean hasEnumValue(JsonObject schema, String name) {
+        if (schema.has(SchemaKeys.ENUM_VALUES)) {
+            for (JsonElement item : schema.getAsJsonArray(SchemaKeys.ENUM_VALUES)) {
+                if (name.equals(item.getAsJsonObject().get(SchemaKeys.SERIALIZED_NAME).getAsString())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    protected EditorFormNode child(JsonObject schema, String label, JsonElement value) {
+        return attach(create(schema, label, value, imported || value != null));
+    }
+
+    protected EditorFormNode attach(EditorFormNode node) {
+        node.onChanged(this::markChanged);
+        return node;
+    }
+
+    /** 仅用户修改向父节点或文档传递，初始化、加载与控件回显不计作编辑。 */
+    public final void onChanged(Runnable listener) {
+        changeListener = listener;
+    }
+
+    protected final void markChanged() {
+        edited = true;
+        if (changeListener != null) {
+            changeListener.run();
+        }
+    }
+
     /** 根节点便捷构造。 */
     public static EditorFormNode root(JsonObject schema) {
-        return create(schema, "", JsonNull.INSTANCE);
+        return create(schema, "", null);
     }
 
     // -------------------------------------------------
@@ -121,12 +198,12 @@ public abstract class EditorFormNode {
     public void setValue(JsonElement v) {
         this.value = v == null ? JsonNull.INSTANCE : v;
         validateValue();
+        markChanged();
     }
 
     /** 标量输入框文本 → 节点值（解析 + 校验）。 */
     public void setValueText(String text) {
-        this.value = parseInput(text, type());
-        validateValue();
+        setValue(parseInput(text, type()));
     }
 
     /** 节点值的文本展示形式（字符串不加引号）。 */
@@ -150,10 +227,25 @@ public abstract class EditorFormNode {
     public abstract int height();
 
     /** 从控件树收集 JSON 值。 */
-    public abstract JsonElement collect();
+    public JsonElement collect() {
+        return original != null && !edited ? original : collectValue();
+    }
+
+    protected JsonElement collectValue() {
+        return value;
+    }
 
     /** 把 JSON 值加载回节点。 */
-    public abstract void load(JsonElement json);
+    public void load(JsonElement json) {
+        original = json;
+        imported = true;
+        edited = false;
+        value = json == null ? defaultFor(schema) : json;
+        reload();
+    }
+
+    protected void reload() {
+    }
 
     /** 校验当前值是否满足约束；无约束时不变。 */
     protected void validateValue() {
@@ -161,6 +253,9 @@ public abstract class EditorFormNode {
 
     /** 收集 JSON 前校验当前分支的草稿，包括无法保存在 JSON 对象中的重复键。 */
     public final boolean hasErrors() {
+        if (imported && original == null && !edited) {
+            return false;
+        }
         validateValue();
         boolean result = invalid;
         for (EditorFormNode child : validationChildren()) {

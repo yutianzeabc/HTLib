@@ -2,7 +2,6 @@ package hungteen.htlib.client.gui.screen.codec.node;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import hungteen.htlib.client.gui.screen.codec.SchemaTooltip;
 import hungteen.htlib.client.gui.screen.codec.EditorHost;
@@ -36,7 +35,7 @@ public final class ListSetNode extends EditorFormNode {
         }
         if (value.isJsonArray()) {
             for (JsonElement e : value.getAsJsonArray()) {
-                listItems.add(EditorFormNode.create(el, "", e));
+                listItems.add(child(el, "", e));
             }
         }
     }
@@ -65,19 +64,21 @@ public final class ListSetNode extends EditorFormNode {
     }
 
     public void addItem() {
-        listItems.add(EditorFormNode.create(elementSchema(), "", JsonNull.INSTANCE));
+        listItems.add(attach(EditorFormNode.create(elementSchema(), "", null)));
         validateValue();
+        markChanged();
     }
 
     public void removeLastItem() {
         if (!listItems.isEmpty()) {
             listItems.remove(listItems.size() - 1);
             validateValue();
+            markChanged();
         }
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         JsonArray arr = new JsonArray();
         for (EditorFormNode item : listItems) {
             arr.add(item.collect());
@@ -86,14 +87,9 @@ public final class ListSetNode extends EditorFormNode {
     }
 
     @Override
-    public void load(JsonElement json) {
+    protected void reload() {
         listItems.clear();
-        JsonObject el = elementSchema();
-        if (el != null && json != null && json.isJsonArray()) {
-            for (JsonElement e : json.getAsJsonArray()) {
-                listItems.add(EditorFormNode.create(el, "", e));
-            }
-        }
+        init();
     }
 
     @Override

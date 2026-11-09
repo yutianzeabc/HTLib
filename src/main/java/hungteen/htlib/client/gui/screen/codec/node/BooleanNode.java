@@ -43,12 +43,7 @@ public final class BooleanNode extends EditorFormNode {
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         return new JsonPrimitive(isCurrentTrue());
-    }
-
-    @Override
-    public void load(JsonElement json) {
-        value = json == null || json.isJsonNull() ? defaultFor(schema) : json;
     }
 }

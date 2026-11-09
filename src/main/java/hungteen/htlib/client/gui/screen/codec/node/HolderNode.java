@@ -76,10 +76,14 @@ public final class HolderNode extends EditorFormNode {
     /** 界面重建时复用内联草稿，包括还不能收集成 JSON 的重复键。 */
     public EditorFormNode inlineNode(JsonObject entrySchema) {
         if (inlineNode == null) {
-            inlineNode = EditorFormNode.root(entrySchema);
-            loadInlineValue();
+            inlineNode = child(entrySchema, "", value.isJsonObject() ? value : null);
         }
         return inlineNode;
+    }
+
+    /** 未取得条目的 Schema 时，仍可编辑整个内联值。 */
+    public EditorFormNode inlineRawNode() {
+        return inlineNode(null);
     }
 
     private boolean hasActiveInlineNode() {
@@ -92,7 +96,7 @@ public final class HolderNode extends EditorFormNode {
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         if (hasActiveInlineNode()) {
             return inlineNode.collect();
         }
@@ -106,8 +110,7 @@ public final class HolderNode extends EditorFormNode {
     }
 
     @Override
-    public void load(JsonElement json) {
-        value = json == null || json.isJsonNull() ? defaultFor(schema) : json;
+    protected void reload() {
         loadInlineValue();
     }
 

@@ -6,6 +6,9 @@ import hungteen.htlib.client.gui.screen.codec.node.UnionNode;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 联合（dispatch）控件：字段标签 + 类型补全选择器 + 当前分支的子控件。
  * 非当前分支的子控件整体隐藏，切换分支时复用（不销毁重建）。
@@ -16,13 +19,12 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class UnionWidget extends EditorWidget {
 
     private final UnionNode node;
-    private final EditorWidget[] variantWidgets;
+    private final Map<Integer, EditorWidget> variantWidgets = new HashMap<>();
     private TypeSelector selector;
 
     public UnionWidget(EditorHost host, UnionNode node) {
         super(host, node);
         this.node = node;
-        this.variantWidgets = new EditorWidget[node.unionNames().size()];
     }
 
     @Override
@@ -37,8 +39,8 @@ public final class UnionWidget extends EditorWidget {
             int idx = node.unionNames().indexOf(name);
             if (idx >= 0) {
                 node.selectVariant(idx);
-                EditorWidget widget = variantWidgets[idx];
-                if (widget != null) {
+                EditorWidget widget = variantWidgets.get(idx);
+                if (widget != null && widget.node() == node.selectedVariant()) {
                     widget.refreshFromNode();
                 }
                 host.relayout();
@@ -72,19 +74,24 @@ public final class UnionWidget extends EditorWidget {
 //            }
 //            return ROW_HEIGHT;
 //        }
-        for (int i = 0; i < variantWidgets.length; i++) {
-            if (i != node.variantIndex() && variantWidgets[i] != null) {
-                variantWidgets[i].setHidden(true);
+        EditorFormNode selected = node.selectedVariant();
+        int idx = node.variantIndex();
+        for (var entry : variantWidgets.entrySet()) {
+            if (entry.getKey() != idx || selected == null) {
+                entry.getValue().setHidden(true);
             }
         }
         int height = ROW_HEIGHT;
-        EditorFormNode selected = node.selectedVariant();
         if (selected != null) {
-            int idx = node.variantIndex();
-            if (variantWidgets[idx] == null) {
-                variantWidgets[idx] = selected.widget(host);
+            EditorWidget widget = variantWidgets.get(idx);
+            if (widget == null || widget.node() != selected) {
+                if (widget != null) {
+                    widget.dispose();
+                }
+                widget = selected.widget(host);
+                variantWidgets.put(idx, widget);
             }
-            height += variantWidgets[idx].layout(x - INDENT, y + ROW_HEIGHT, width + INDENT);
+            height += widget.layout(x - INDENT, y + ROW_HEIGHT, width + INDENT);
         }
         return height;
     }
@@ -109,7 +116,14 @@ public final class UnionWidget extends EditorWidget {
 
     @Override
     public void refreshFromNode() {
+        if (!isCreated()) {
+            return;
+        }
+        if (selector == null && !node.unionNames().isEmpty()) {
+            create();
+        }
         if (selector != null) {
+            selector.setSuggestions(node.unionNames());
             selector.setValue(node.currentVariantName());
         }
         EditorWidget widget = selectedWidget();
@@ -122,10 +136,8 @@ public final class UnionWidget extends EditorWidget {
     public void setHidden(boolean hidden) {
         super.setHidden(hidden);
         if (hidden) {
-            for (EditorWidget widget : variantWidgets) {
-                if (widget != null) {
-                    widget.setHidden(true);
-                }
+            for (EditorWidget widget : variantWidgets.values()) {
+                widget.setHidden(true);
             }
         }
     }
@@ -133,15 +145,15 @@ public final class UnionWidget extends EditorWidget {
     @Override
     protected void onDispose() {
         removeSelector(selector);
-        for (EditorWidget widget : variantWidgets) {
-            if (widget != null) {
-                widget.dispose();
-            }
+        selector = null;
+        for (EditorWidget widget : variantWidgets.values()) {
+            widget.dispose();
         }
+        variantWidgets.clear();
     }
 
     private EditorWidget selectedWidget() {
-        int idx = node.variantIndex();
-        return idx >= 0 && idx < variantWidgets.length ? variantWidgets[idx] : null;
+        EditorWidget widget = variantWidgets.get(node.variantIndex());
+        return widget != null && widget.node() == node.selectedVariant() ? widget : null;
     }
 }

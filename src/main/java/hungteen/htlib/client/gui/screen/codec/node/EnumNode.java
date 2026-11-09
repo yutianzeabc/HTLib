@@ -81,20 +81,24 @@ public final class EnumNode extends EditorFormNode {
 
     /** 选中指定常量。 */
     public void setEnumValue(String name) {
-        enumIndex = Math.max(0, enumValues.indexOf(name));
+        int idx = enumValues.indexOf(name);
+        if (idx >= 0) {
+            enumIndex = idx;
+            markChanged();
+        }
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         return enumIndex >= 0 && enumIndex < enumValues.size()
             ? new com.google.gson.JsonPrimitive(enumValues.get(enumIndex)) : JsonNull.INSTANCE;
     }
 
     @Override
-    public void load(JsonElement json) {
+    protected void reload() {
         String current;
-        if (json != null && json.isJsonPrimitive()) {
-            current = json.getAsString();
+        if (value.isJsonPrimitive()) {
+            current = value.getAsString();
         } else {
             // 无值重置时回到 schema 声明的默认枚举名（如有）
             current = SchemaTooltip.defaultText(schema);

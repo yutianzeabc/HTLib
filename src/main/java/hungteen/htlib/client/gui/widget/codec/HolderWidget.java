@@ -62,6 +62,8 @@ public final class HolderWidget extends EditorWidget {
         }
         if (supportsInline()) {
             acquireEntrySchema();
+        } else if (inlineMode()) {
+            inlineNode = node.inlineRawNode();
         }
         buildControl();
         if (registryName != null && entries.isEmpty()) {
@@ -115,13 +117,16 @@ public final class HolderWidget extends EditorWidget {
     @Override
     public void refreshFromNode() {
         if (inlineMode()) {
+            if (inlineNode == null && !supportsInline()) {
+                inlineNode = node.inlineRawNode();
+            }
             if (inlineNode != null) {
                 inlineNode.widget(host).refreshFromNode();
             }
             return;
         }
         if (box != null) {
-            box.setValue(node.valueText());
+            refreshEditBox(box, node.valueText());
             applyErrorColor(box);
         } else if (selector != null) {
             selector.setValue(node.valueText());
@@ -186,7 +191,7 @@ public final class HolderWidget extends EditorWidget {
     }
 
     private void acquireEntrySchema() {
-        if (entrySchema != null) {
+        if (entrySchema != null || inlineNode != null) {
             return;
         }
         String registryName = node.registryName();
@@ -202,16 +207,24 @@ public final class HolderWidget extends EditorWidget {
         EntrySchemaCache.acquire(registryName, this::onEntrySchema);
     }
 
-    /** 条目结构 schema 到达：构建内联子表单并重排（空串表示服务端解析失败，忽略并停留引用模式）。 */
+    /** 条目结构到达后构建内联子表单；缺失或无法解析时，保留已导入的对象原文。 */
     private void onEntrySchema(String schemaJson) {
-        if (!isCreated() || entrySchema != null || inlineNode != null || schemaJson.isEmpty()) {
+        if (!isCreated() || entrySchema != null || inlineNode != null) {
             return;
         }
-        try {
-            entrySchema = SchemaReferences.expand(JsonParser.parseString(schemaJson).getAsJsonObject());
-            inlineNode = node.inlineNode(entrySchema);
+        if (!schemaJson.isEmpty()) {
+            try {
+                JsonObject schema = SchemaReferences.expand(JsonParser.parseString(schemaJson).getAsJsonObject());
+                inlineNode = node.inlineNode(schema);
+                entrySchema = schema;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        if (inlineNode == null && inlineMode()) {
+            inlineNode = node.inlineRawNode();
+        }
+        if (inlineNode != null) {
             host.relayout();
-        } catch (Exception ignored) {
         }
     }
 

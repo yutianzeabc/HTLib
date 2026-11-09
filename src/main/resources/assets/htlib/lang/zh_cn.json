@@ -85,5 +85,14 @@
   "htlib.screen.json_too_large": "JSON 超过 %s 个 UTF-8 字节的网络限制。",
   "htlib.screen.optional_enable": "启用此可选字段",
   "htlib.screen.optional_disable": "省略此字段，保留当前草稿",
-  "htlib.screen.optional_absent": "未设置 / 使用默认值"
+  "htlib.screen.optional_absent": "未设置 / 使用默认值",
+  "htlib.screen.raw_json": "原始 JSON",
+  "htlib.screen.import_clipboard": "粘贴全文",
+  "htlib.screen.json_paste_filtered": "普通粘贴会过滤此内容中的字符，请使用“粘贴全文”保留原文。",
+  "htlib.screen.json_input_rejected": "未更改输入：%s",
+  "htlib.screen.finish_import": "请先完成或取消当前 JSON 导入。",
+  "htlib.screen.unsaved_title": "有未保存的修改",
+  "htlib.screen.unsaved_message": "继续操作会丢弃当前未保存的输入。已发出的保存请求仍会完成。",
+  "htlib.screen.discard_changes": "放弃更改",
+  "htlib.screen.keep_editing": "继续编辑"
 }
