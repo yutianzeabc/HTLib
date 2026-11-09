@@ -37,13 +37,8 @@ public final class ScalarNode extends EditorFormNode {
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         return value == null ? JsonNull.INSTANCE : value;
-    }
-
-    @Override
-    public void load(JsonElement json) {
-        value = json == null || json.isJsonNull() ? defaultFor(schema) : json;
     }
 
     @Override
@@ -55,8 +50,9 @@ public final class ScalarNode extends EditorFormNode {
         switch (type()) {
             case BYTE, SHORT, INT, LONG, FLOAT, DOUBLE -> {
                 kind = SchemaTooltip.Kind.NUMBER;
-                if (raw.isEmpty() || !value.getAsJsonPrimitive().isNumber()
-                    || !parseInput(raw, type()).getAsJsonPrimitive().isNumber()) {
+                // 直接 load 到已有标量节点时也保留导入的数字写法；输入框修改仍按类型解析。
+                boolean unchanged = !edited && value == original;
+                if (!isNumber(value) || (!unchanged && !isNumber(parseInput(raw, type())))) {
                     invalid = true;
                     errorMessage = I18n.get("htlib.error.number", type().name());
                     return;

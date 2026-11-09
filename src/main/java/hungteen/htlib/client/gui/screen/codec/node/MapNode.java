@@ -1,7 +1,6 @@
 package hungteen.htlib.client.gui.screen.codec.node;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import hungteen.htlib.client.gui.screen.codec.EditorHost;
@@ -38,8 +37,8 @@ public final class MapNode extends EditorFormNode {
         }
         if (value.isJsonObject()) {
             for (var entry : value.getAsJsonObject().entrySet()) {
-                mapKeys.add(EditorFormNode.create(k, "", new JsonPrimitive(entry.getKey())));
-                mapValues.add(EditorFormNode.create(v, "", entry.getValue()));
+                mapKeys.add(child(k, "", new JsonPrimitive(entry.getKey())));
+                mapValues.add(child(v, "", entry.getValue()));
             }
         }
     }
@@ -79,6 +78,11 @@ public final class MapNode extends EditorFormNode {
         errorMessage = "";
         Set<String> keys = new HashSet<>();
         for (EditorFormNode key : mapKeys) {
+            if (key.hasErrors()) {
+                invalid = true;
+                errorMessage = key.errorMessage();
+                return;
+            }
             JsonElement current = key.collect();
             if (!current.isJsonPrimitive() || !keys.add(current.getAsString())) {
                 invalid = true;
@@ -89,19 +93,21 @@ public final class MapNode extends EditorFormNode {
     }
 
     public void addEntry() {
-        mapKeys.add(EditorFormNode.create(keySchema(), "", new JsonPrimitive("")));
-        mapValues.add(EditorFormNode.create(valueSchema(), "", JsonNull.INSTANCE));
+        mapKeys.add(attach(EditorFormNode.create(keySchema(), "", new JsonPrimitive(""))));
+        mapValues.add(attach(EditorFormNode.create(valueSchema(), "", null)));
+        markChanged();
     }
 
     public void removeLastEntry() {
         if (!mapKeys.isEmpty()) {
             mapKeys.remove(mapKeys.size() - 1);
             mapValues.remove(mapValues.size() - 1);
+            markChanged();
         }
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         JsonObject obj = new JsonObject();
         for (int i = 0; i < Math.min(mapKeys.size(), mapValues.size()); i++) {
             JsonElement k = mapKeys.get(i).collect();
@@ -114,16 +120,9 @@ public final class MapNode extends EditorFormNode {
     }
 
     @Override
-    public void load(JsonElement json) {
+    protected void reload() {
         mapKeys.clear();
         mapValues.clear();
-        JsonObject k = keySchema();
-        JsonObject v = valueSchema();
-        if (k != null && v != null && json != null && json.isJsonObject()) {
-            for (var entry : json.getAsJsonObject().entrySet()) {
-                mapKeys.add(EditorFormNode.create(k, "", new JsonPrimitive(entry.getKey())));
-                mapValues.add(EditorFormNode.create(v, "", entry.getValue()));
-            }
-        }
+        init();
     }
 }

@@ -32,6 +32,9 @@ public interface EditorHost {
 
     void unregisterSelector(TypeSelector selector);
 
+    /** 展示原文输入失败的原因，保留当前草稿。 */
+    void showInputError(String reason);
+
     /**
      * 结构变化后请求重新布局（只重摆控件，不重建）。
      */

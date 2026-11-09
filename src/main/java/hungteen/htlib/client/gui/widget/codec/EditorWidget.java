@@ -51,6 +51,8 @@ public abstract class EditorWidget {
     private int lastHeight = 0;
     private Button collapseToggle;
     private boolean collapsed = false;
+    private boolean refreshingInput;
+    private String lastInput;
     private final List<AbstractWidget> owned = new ArrayList<>();
 
     protected EditorWidget(EditorHost host, EditorFormNode node) {
@@ -259,14 +261,36 @@ public abstract class EditorWidget {
         widget.visible = !hidden && rowVisible(wy);
     }
 
-    protected final EditBox createEditBox(String value, Consumer<String> onChanged) {
-        EditBox box = new EditBox(host.font(), 0, 0, 1, ROW_HEIGHT - 3, Component.literal(""));
+    protected final EditBox createEditBox(int boxWidth, String value, Consumer<String> onChanged) {
+        EditBox box = new EditBox(host.font(), 0, 0, boxWidth, ROW_HEIGHT - 3, Component.literal(""));
         box.setMaxLength(EditorPacketLimits.MAX_JSON_LENGTH);
         box.setValue(value);
-        box.setResponder(onChanged);
+        lastInput = box.getValue();
+        box.setResponder(text -> {
+            // 原版移动光标也会通知 responder，此时保留节点的原始值。
+            if (text.equals(lastInput)) {
+                return;
+            }
+            lastInput = text;
+            if (!refreshingInput) {
+                onChanged.accept(text);
+            }
+        });
         host.addWidget(box);
         owned.add(box);
         return box;
+    }
+
+    /** 节点回填不能触发用户输入的解析或修改标记。 */
+    protected final void refreshEditBox(EditBox box, String value) {
+        if (!box.getValue().equals(value)) {
+            refreshingInput = true;
+            try {
+                box.setValue(value);
+            } finally {
+                refreshingInput = false;
+            }
+        }
     }
 
     protected final Button createButton(String text, int buttonWidth, Button.OnPress action) {
@@ -295,7 +319,7 @@ public abstract class EditorWidget {
         }
     }
 
-    private void attachWidget(AbstractWidget widget) {
+    protected final void attachWidget(AbstractWidget widget) {
         host.addWidget(widget);
         owned.add(widget);
     }

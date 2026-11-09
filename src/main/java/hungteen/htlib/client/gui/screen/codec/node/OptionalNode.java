@@ -27,7 +27,7 @@ public final class OptionalNode extends EditorFormNode {
 
     OptionalNode(JsonObject schema, String label, JsonElement value) {
         super(schema, label, value);
-        this.present = value != null && !value.isJsonNull();
+        this.present = value != null;
     }
 
     @Override
@@ -45,7 +45,7 @@ public final class OptionalNode extends EditorFormNode {
         if (structuralInner()) {
             return EditorWidget.ROW_HEIGHT + optionalInner.height();
         }
-        return EditorWidget.ROW_HEIGHT;
+        return optionalInner.height();
     }
 
     @Override
@@ -54,8 +54,9 @@ public final class OptionalNode extends EditorFormNode {
     }
 
     public EditorFormNode inner() {
-        if (optionalInner == null && elementSchema() != null) {
-            optionalInner = EditorFormNode.create(elementSchema(), "", value);
+        if (optionalInner == null) {
+            JsonElement initial = original != null || !value.isJsonNull() ? value : null;
+            optionalInner = attach(EditorFormNode.create(elementSchema(), "", initial));
         }
         return optionalInner;
     }
@@ -66,10 +67,14 @@ public final class OptionalNode extends EditorFormNode {
 
     /** 字段停用后保留草稿，再启用时继续编辑。 */
     public void setPresent(boolean present) {
+        if (this.present == present) {
+            return;
+        }
         this.present = present;
         if (present) {
             inner();
         }
+        markChanged();
     }
 
     @Override
@@ -89,14 +94,13 @@ public final class OptionalNode extends EditorFormNode {
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         return !present || optionalInner == null ? JsonNull.INSTANCE : optionalInner.collect();
     }
 
     @Override
-    public void load(JsonElement json) {
-        present = json != null && !json.isJsonNull();
-        this.value = json == null || json.isJsonNull() ? defaultFor(schema) : json;
+    protected void reload() {
+        present = original != null;
         optionalInner = null;
         init();
     }

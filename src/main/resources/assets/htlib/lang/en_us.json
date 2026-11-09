@@ -85,5 +85,14 @@
   "htlib.screen.json_too_large": "JSON exceeds the %s-byte UTF-8 network limit.",
   "htlib.screen.optional_enable": "Include this optional field",
   "htlib.screen.optional_disable": "Omit this field; preserve its draft",
-  "htlib.screen.optional_absent": "Not set / use default"
+  "htlib.screen.optional_absent": "Not set / use default",
+  "htlib.screen.raw_json": "Raw JSON",
+  "htlib.screen.import_clipboard": "Paste all",
+  "htlib.screen.json_paste_filtered": "Normal paste would filter characters. Use Paste all to preserve the original text.",
+  "htlib.screen.json_input_rejected": "Input unchanged: %s",
+  "htlib.screen.finish_import": "Finish or cancel the current JSON import first.",
+  "htlib.screen.unsaved_title": "Unsaved changes",
+  "htlib.screen.unsaved_message": "Continuing will discard the current unsaved input. Save requests already sent will still complete.",
+  "htlib.screen.discard_changes": "Discard changes",
+  "htlib.screen.keep_editing": "Keep editing"
 }

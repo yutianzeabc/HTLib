@@ -24,11 +24,10 @@ public final class ScalarWidget extends EditorWidget {
 
     @Override
     protected void create() {
-        box = createEditBox(node.valueText(), s -> {
+        box = createEditBox(40, node.valueText(), s -> {
             node.setValueText(s);
             applyErrorColor(box);
         });
-        box.setWidth(40);
     }
 
     @Override
@@ -46,7 +45,7 @@ public final class ScalarWidget extends EditorWidget {
     public void refreshFromNode() {
         node.validate();
         if (box != null) {
-            box.setValue(node.valueText());
+            refreshEditBox(box, node.valueText());
             applyErrorColor(box);
         }
     }

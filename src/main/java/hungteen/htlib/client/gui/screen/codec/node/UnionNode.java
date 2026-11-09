@@ -2,7 +2,6 @@ package hungteen.htlib.client.gui.screen.codec.node;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import hungteen.htlib.client.gui.screen.codec.ViewerStyle;
 import hungteen.htlib.client.gui.screen.codec.EditorHost;
@@ -39,27 +38,35 @@ public final class UnionNode extends EditorFormNode {
 
     @Override
     protected void init() {
-        if (!schema.has(SchemaKeys.VARIANTS)) {
-            return;
+        if (schema.has(SchemaKeys.VARIANTS)) {
+            variantSchemas = schema.getAsJsonArray(SchemaKeys.VARIANTS);
         }
-        variantSchemas = schema.getAsJsonArray(SchemaKeys.VARIANTS);
         // 只读取当前层的名称。用整个 schema 作缓存键会递归计算共享子结构的哈希。
         List<String> names = new ArrayList<>();
         for (JsonElement variant : variantSchemas) {
             JsonObject entry = variant.getAsJsonObject();
             names.add(entry.has(SchemaKeys.NAME) ? entry.get(SchemaKeys.NAME).getAsString() : "分支" + names.size());
         }
+        unionIndex = original == null ? firstVariant() : matchUnionVariant(original, names);
+        if (unionIndex < 0) {
+            // 未识别的分派键保留整段 JSON，只有用户选择其它分支才替换它。
+            unionIndex = names.size();
+            String rawName = I18n.get("htlib.screen.raw_json");
+            while (names.contains(rawName)) {
+                rawName += "*";
+            }
+            names.add(rawName);
+            unionVariants.put(unionIndex, child(null, "", original));
+        }
         unionNames = List.copyOf(names);
-        if (!variantSchemas.isEmpty()) {
-            unionIndex = matchUnionVariant(value);
-            selectedVariant().load(value);
+        if (original != null && unionIndex < variantSchemas.size()) {
+            unionVariants.put(unionIndex, createVariant(unionIndex, original.getAsJsonObject()));
         }
     }
 
     @Override
     public int height() {
-        EditorFormNode selected = selectedVariant();
-        return selected == null ? EditorWidget.ROW_HEIGHT : EditorWidget.ROW_HEIGHT + selected.height();
+        return EditorWidget.ROW_HEIGHT + selectedVariant().height();
     }
 
     @Override
@@ -85,54 +92,73 @@ public final class UnionNode extends EditorFormNode {
     }
 
     public EditorFormNode selectedVariant() {
-        if (variantSchemas.isEmpty()) {
-            return null;
+        return unionVariants.computeIfAbsent(unionIndex, index -> createVariant(index, null));
+    }
+
+    private EditorFormNode createVariant(int index, JsonObject input) {
+        JsonObject variant = variantSchemas.get(index).getAsJsonObject();
+        switch (typeOf(variant)) {
+            case RECORD, MAP, UNION -> {
+                if (input == null) {
+                    return imported && original == null ? child(variant, "", null) : attach(EditorFormNode.root(variant));
+                }
+                if (!needsRaw(variant, input)) {
+                    // 分派键属于外层。未知字段保存在当前分支，切换时不会带到其它分支。
+                    JsonObject body = new JsonObject();
+                    input.entrySet().forEach(entry -> {
+                        if (!entry.getKey().equals(discriminatorKey())) {
+                            body.add(entry.getKey(), entry.getValue());
+                        }
+                    });
+                    return child(variant, "", body);
+                }
+            }
+            default -> { }
         }
-        return unionVariants.computeIfAbsent(unionIndex,
-            index -> EditorFormNode.create(variantSchemas.get(index).getAsJsonObject(), "", JsonNull.INSTANCE));
+        // 此分支没有可投影的对象结构，保留包含分派键的完整值。
+        if (input == null) {
+            input = new JsonObject();
+            input.addProperty(discriminatorKey(), unionNames.get(index));
+        }
+        return child(null, "", input);
     }
 
     /** 切换到指定变体，保留之前编辑的分支草稿。 */
     public void selectVariant(int idx) {
-        if (idx < 0 || idx >= variantSchemas.size()) {
+        if (idx < 0 || idx >= unionNames.size() || idx == unionIndex) {
             return;
         }
         unionIndex = idx;
+        markChanged();
     }
 
     @Override
     protected List<EditorFormNode> validationChildren() {
-        EditorFormNode selected = selectedVariant();
-        return selected == null ? List.of() : List.of(selected);
+        return List.of(selectedVariant());
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         EditorFormNode selected = selectedVariant();
-        if (selected == null) {
-            return JsonNull.INSTANCE;
-        }
         JsonElement inner = selected.collect();
+        if (selected instanceof RawJsonNode) {
+            return inner;
+        }
         // 用 {分派键: 变体名, ...变体字段} 组装，符合 dispatch codec 的 JSON 结构。
         JsonObject obj = new JsonObject();
-        obj.addProperty(discriminatorKey(), currentVariantName());
         if (inner.isJsonObject()) {
             for (var e : inner.getAsJsonObject().entrySet()) {
-                if (e.getValue() != null && !e.getValue().isJsonNull()) {
-                    obj.add(e.getKey(), e.getValue());
-                }
+                obj.add(e.getKey(), e.getValue());
             }
         }
+        obj.addProperty(discriminatorKey(), currentVariantName());
         return obj;
     }
 
     @Override
-    public void load(JsonElement json) {
-        this.value = json == null ? JsonNull.INSTANCE : json;
-        if (!variantSchemas.isEmpty()) {
-            unionIndex = matchUnionVariant(value);
-            selectedVariant().load(value);
-        }
+    protected void reload() {
+        unionVariants.clear();
+        init();
     }
 
     @Override
@@ -147,29 +173,23 @@ public final class UnionNode extends EditorFormNode {
         }
     }
 
-    /**
-     * 探测当前值匹配哪个变体：
-     * 1) 若值有分派键且其值与某个变体名相同，匹配该变体；
-     * 2) 否则按 schema 选择第一个对象结构，不创建或重置其它分支；
-     * 3) 兜底 0。
-     */
-    private int matchUnionVariant(JsonElement value) {
-        if (value != null && value.isJsonObject()) {
+    private int matchUnionVariant(JsonElement value, List<String> names) {
+        if (value.isJsonObject()) {
             JsonElement typeVal = value.getAsJsonObject().get(discriminatorKey());
-            if (typeVal != null && typeVal.isJsonPrimitive()) {
-                String name = typeVal.getAsString();
-                int idx = unionNames.indexOf(name);
-                if (idx >= 0) {
-                    return idx;
-                }
+            if (typeVal != null && typeVal.isJsonPrimitive() && typeVal.getAsJsonPrimitive().isString()) {
+                return names.indexOf(typeVal.getAsString());
             }
         }
+        return -1;
+    }
+
+    private int firstVariant() {
         for (int i = 0; i < variantSchemas.size(); i++) {
             switch (typeOf(variantSchemas.get(i).getAsJsonObject())) {
                 case RECORD, MAP, UNION, EITHER -> { return i; }
                 default -> { }
             }
         }
-        return 0;
+        return variantSchemas.isEmpty() ? -1 : 0;
     }
 }

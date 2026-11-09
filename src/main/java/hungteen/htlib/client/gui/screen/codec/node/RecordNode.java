@@ -48,7 +48,7 @@ public final class RecordNode extends EditorFormNode {
                     fieldSchema.add(SchemaKeys.DEFAULT, field.get(SchemaKeys.DEFAULT));
                 }
             }
-            recordChildren.add(EditorFormNode.create(fieldSchema, name, fieldValue(name)));
+            recordChildren.add(child(fieldSchema, name, imported && original == null ? null : fieldValue(name)));
         }
     }
 
@@ -76,15 +76,21 @@ public final class RecordNode extends EditorFormNode {
     }
 
     @Override
-    public JsonElement collect() {
+    protected JsonElement collectValue() {
         JsonObject obj = new JsonObject();
+        if (original != null && original.isJsonObject()) {
+            original.getAsJsonObject().entrySet().forEach(entry -> obj.add(entry.getKey(), entry.getValue()));
+        }
         for (EditorFormNode child : recordChildren) {
-            // 可选枚举且"不使用"：省略该键
+            if (imported && !child.edited) {
+                continue;
+            }
             if (child.isOptionalAndAbsent()) {
+                obj.remove(child.label());
                 continue;
             }
             JsonElement e = child.collect();
-            if (e != null && !e.isJsonNull()) {
+            if (!e.isJsonNull() || child.edited) {
                 obj.add(child.label(), e);
             }
         }
@@ -92,13 +98,15 @@ public final class RecordNode extends EditorFormNode {
     }
 
     @Override
-    public void load(JsonElement json) {
-        this.value = json == null || json.isJsonNull() ? defaultFor(schema) : json;
-        if (this.value == null) {
-            this.value = new JsonObject();
-        }
-        for (EditorFormNode child : recordChildren) {
-            child.load(fieldValue(child.label()));
+    protected void reload() {
+        for (int i = 0; i < recordChildren.size(); i++) {
+            EditorFormNode node = recordChildren.get(i);
+            JsonElement input = original == null ? null : fieldValue(node.label());
+            if (needsRaw(node.schema, input) == (node instanceof RawJsonNode)) {
+                node.load(input);
+            } else {
+                recordChildren.set(i, child(node.schema, node.label(), input));
+            }
         }
     }
 }
